@@ -1,0 +1,195 @@
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Распаковщик личности PRO</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#242321;background:#f5f3ef}
+*{box-sizing:border-box}
+body{margin:0;padding:24px 18px;max-width:760px;margin-inline:auto}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;font-weight:750;font-size:19px;margin:8px 0 65px}
+.badge{font-weight:500;font-size:13px;color:#6341d9;background:#eee8ff;padding:10px 13px;border-radius:24px;white-space:nowrap}
+.eyebrow{font-size:13px;letter-spacing:2px;color:#704bea;font-weight:800}
+h1{font-size:clamp(35px,8vw,58px);line-height:1.06;letter-spacing:-2px;margin:20px 0}
+.lead{font-size:19px;line-height:1.6;color:#605c56}
+.panel{background:white;border:1px solid #e5e0d8;border-radius:24px;padding:25px;margin:26px 0}
+button{border:0;border-radius:14px;padding:16px 18px;font-size:16px;font-weight:650;cursor:pointer}
+.primary{background:#704bea;color:white;width:100%}
+.secondary{background:#f0edf8;color:#4d35a4}
+input,textarea{width:100%;font:inherit;font-size:17px;border:1px solid #ddd7ce;border-radius:14px;padding:15px;background:#fff;color:#242321}
+textarea{min-height:140px;resize:vertical;line-height:1.5}
+label{display:block;font-weight:650;margin:22px 0 10px}
+.muted{color:#77736d;font-size:14px;line-height:1.5}
+.hidden{display:none!important}
+#status{margin-top:14px;color:#6c50c8;line-height:1.5;overflow-wrap:anywhere}
+#question{font-size:22px;line-height:1.45;font-weight:650}
+footer{color:#77736d;font-size:13px;line-height:1.6;margin:32px 0}
+</style>
+</head>
+<body>
+<header>
+  <span>Распаковщик личности <span style="color:#704bea">PRO</span></span>
+  <span class="badge">Глубинное интервью</span>
+</header>
+
+<section id="intro">
+  <div class="eyebrow">ИССЛЕДОВАНИЕ ОПЫТА · НЕ ТЕСТ</div>
+  <h1>Лучше понять себя — через реальные истории.</h1>
+  <p class="lead">Последовательное интервью о вашем опыте, интересах, способностях, мотивации и подходящих условиях деятельности.</p>
+  <div class="panel">
+    <h2>Перед началом</h2>
+    <p>Отвечайте конкретно: вспоминайте реальные ситуации, свои действия и результат. Здесь нет правильных ответов. Вы можете не отвечать на любой вопрос.</p>
+    <label for="goal">Что вы хотите лучше понять о себе?</label>
+    <textarea id="goal" placeholder="Например: мои сильные стороны, подходящая деятельность, профессиональное направление…"></textarea>
+    <button class="primary" id="start">Начать интервью</button>
+    <div id="startStatus" class="muted"></div>
+  </div>
+</section>
+
+<section id="interview" class="hidden">
+  <div class="eyebrow" id="progress">ГЛУБИННОЕ ИНТЕРВЬЮ</div>
+  <div class="panel">
+    <div id="question">Подготовка первого вопроса…</div>
+    <p class="muted">Лучше один конкретный случай, чем общая характеристика себя.</p>
+    <label for="answer">Ваш ответ</label>
+    <textarea id="answer" placeholder="Опишите ситуацию, свои действия и результат…"></textarea>
+    <button class="primary" id="send">Отправить ответ</button>
+    <div id="status" role="status"></div>
+  </div>
+  <button class="secondary" id="end">Завершить интервью</button>
+</section>
+
+<section id="result" class="hidden">
+  <div class="eyebrow">ВАШИ РЕЗУЛЬТАТЫ</div>
+  <h1>Промежуточный профиль</h1>
+  <div class="panel" id="report"></div>
+  <button class="primary" onclick="location.reload()">Начать заново</button>
+</section>
+
+<footer>Распаковщик личности PRO — инструмент самоанализа, а не клиническая диагностика. Не вводите пароли, платёжные данные или другую конфиденциальную информацию.</footer>
+
+<script>
+const API = "https://raspakovshik-pro-api.karen-oganesyan-1986.workers.dev";
+const $ = id => document.getElementById(id);
+let history = [];
+let count = 0;
+let busy = false;
+
+function showStatus(message, error=false) {
+  $("status").textContent = message;
+  $("status").style.color = error ? "#b42318" : "#6c50c8";
+}
+
+async function callApi(path, payload) {
+  const response = await fetch(API + path, {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || data.message || `Ошибка сервера: ${response.status}`);
+  return data;
+}
+
+function extractText(data) {
+  if (typeof data.reply === "string") return data.reply;
+  if (typeof data.message === "string") return data.message;
+  if (typeof data.question === "string") return data.question;
+  if (typeof data.output_text === "string") return data.output_text;
+  if (Array.isArray(data.output)) {
+    return data.output.flatMap(x => x.content || [])
+      .map(x => x.text || "").filter(Boolean).join("\n");
+  }
+  return "";
+}
+
+async function begin() {
+  if (busy) return;
+  busy = true;
+  $("start").disabled = true;
+  $("startStatus").textContent = "Подключаем интервью…";
+  try {
+    const goal = $("goal").value.trim();
+    const data = await callApi("/interview", {
+      action: "start",
+      goal,
+      message: goal || "Начни глубинное интервью с одного открытого вопроса о реальном опыте человека."
+    });
+    const reply = extractText(data);
+    if (!reply) throw new Error("Сервер ответил, но формат ответа не распознан.");
+    history.push({role:"assistant",content:reply});
+    $("question").textContent = reply;
+    $("intro").classList.add("hidden");
+    $("interview").classList.remove("hidden");
+    $("answer").focus();
+  } catch(e) {
+    $("startStatus").textContent = "Не удалось запустить интервью: " + e.message;
+  } finally {
+    busy = false;
+    $("start").disabled = false;
+  }
+}
+
+async function sendAnswer() {
+  const message = $("answer").value.trim();
+  if (!message || busy) return;
+  busy = true;
+  $("send").disabled = true;
+  showStatus("Анализируем ответ…");
+  history.push({role:"user",content:message});
+  try {
+    const data = await callApi("/interview", {
+      action:"answer",
+      goal:$("goal").value.trim(),
+      message,
+      history
+    });
+    const reply = extractText(data);
+    if (!reply) throw new Error("Ответ сервера не содержит текста.");
+    history.push({role:"assistant",content:reply});
+    count++;
+    $("question").textContent = reply;
+    $("progress").textContent = "ВОПРОС " + (count + 1);
+    $("answer").value = "";
+    showStatus("Ответ сохранён в текущем сеансе.");
+  } catch(e) {
+    history.pop();
+    showStatus("Ошибка: " + e.message, true);
+  } finally {
+    busy = false;
+    $("send").disabled = false;
+  }
+}
+
+async function finish() {
+  if (busy) return;
+  busy = true;
+  $("end").disabled = true;
+  showStatus("Формируем профиль…");
+  try {
+    const data = await callApi("/interview", {
+      action:"finish",
+      goal:$("goal").value.trim(),
+      history
+    });
+    const reply = extractText(data);
+    if (!reply) throw new Error("Сервер не вернул итоговый профиль.");
+    $("report").textContent = reply;
+    $("interview").classList.add("hidden");
+    $("result").classList.remove("hidden");
+  } catch(e) {
+    showStatus("Не удалось сформировать профиль: " + e.message, true);
+  } finally {
+    busy = false;
+    $("end").disabled = false;
+  }
+}
+
+$("start").addEventListener("click", begin);
+$("send").addEventListener("click", sendAnswer);
+$("end").addEventListener("click", finish);
+</script>
+</body>
+</html>
