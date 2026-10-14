@@ -45,4 +45,4 @@ $("copyBtn").addEventListener("click",async()=>{try{await navigator.clipboard.wr
 $("gjcdownloadBtn").addEventListener("click",()=>{let blob=new Blob([makeText()],{type:"text/plain;charset=utf-8"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="raspakovshik-pro-interview.txt";document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url)});
 $("restartBtn").addEventListener("click",()=>{index=0;answers=Array(questions.length).fill("");start()});
 })();
-</script></body></html>.
+</script></body></html>
